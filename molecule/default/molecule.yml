@@ -1,0 +1,21 @@
+driver:
+  name: docker
+
+platforms:
+  - name: instance
+    image: ${MOLECULE_IMAGE:-geerlingguy/docker-ubuntu2204-ansible}
+    pre_build_image: true
+    privileged: true
+    command: /sbin/init
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      host_key_checking: false
+
+verifier:
+  name: testinfra
+
