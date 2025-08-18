@@ -4,15 +4,13 @@ galaxy_info:
   author: "Ton Nom / Orga" 
   description: "Gestion/installation de modules Odoo via Ansible." 
   license: MIT 
-  min_ansible_version: "2.14" 
-  platforms: 
-    - name: Ubuntu 
-      versions: ["22.04","20.04"] 
-    - name: Debian 
-      versions: ["12","11"] 
-    - name: EL 
-      versions: ["9","8"] 
+  min_ansible_version: "2.15" 
+  platforms:
+    - name: Ubuntu
+      versions: ["jammy", "focal"]          # 22.04=jammy, 20.04=focal
+    - name: Debian
+      versions: ["bookworm", "bullseye"]    # 12, 11
+    - name: EL
+      versions: ["9", "8"]                  # Rocky/Alma (RHEL-like)
   galaxy_tags: [odoo, xmlrpc, ubuntu, debian, rocky] 
 dependencies: [] 
-
- 
