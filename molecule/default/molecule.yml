@@ -12,6 +12,8 @@ platforms:
 
 provisioner:
   name: ansible
+  playbooks:
+    converge: converge.yml
   config_options:
     defaults:
       host_key_checking: false
