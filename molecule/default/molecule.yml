@@ -29,17 +29,17 @@ platforms:
     entrypoint: ["/bin/sh", "-lc"]
     command: |
       python3 - <<'PY'
-import socket, time, sys
-for _ in range(120):
-    try:
-        s = socket.create_connection(('db', 5432), 2)
-        s.close()
-        break
-    except Exception:
-        time.sleep(2)
-else:
-    sys.exit('db not ready')
-PY
+      import socket, time, sys
+      for _ in range(120):
+          try:
+              s = socket.create_connection(('db', 5432), 2)
+              s.close()
+              break
+          except Exception:
+              time.sleep(2)
+      else:
+          sys.exit('db not ready')
+      PY
       odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo --without-demo=all -i base --stop-after-init
       exec odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo --without-demo=all
     published_ports:
