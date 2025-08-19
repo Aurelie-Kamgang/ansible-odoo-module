@@ -9,17 +9,28 @@ driver:
   name: docker
 
 platforms:
+  # ---- Postgres avec healthcheck + port publié ----
   - name: db
-    image: postgres:15-alpine
+    image: postgres:15           # <- debian-based, plus prévisible
     pre_build_image: true
     environment:
       POSTGRES_USER: odoo
       POSTGRES_PASSWORD: odoo
       POSTGRES_DB: testdb
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    published_ports:
+      - "5432:5432"
     networks:
       - name: molnet
+    # Healthcheck côté container (requis pour que odoo_init sache attendre)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d testdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 10s
 
-  # One-shot: attend Postgres et initialise la DB Odoo, puis s'arrête
+  # ---- One-shot: attend santé Postgres puis initialise la DB Odoo ----
   - name: odoo_init
     image: odoo:16
     pre_build_image: true
@@ -29,23 +40,17 @@ platforms:
       DB_PASSWORD: odoo
     entrypoint: ["/bin/sh", "-lc"]
     command: |
-      python3 - <<'PY'
-      import socket, time, sys
-      for _ in range(120):
-          try:
-              s = socket.create_connection(('db', 5432), 2)
-              s.close()
-              break
-          except Exception:
-              time.sleep(2)
-      else:
-          sys.exit('db not ready')
-      PY
+      # attendre que le healthcheck de Postgres passe
+      for i in $(seq 1 180); do
+        pg_isready -h db -p 5432 -U odoo -d testdb >/dev/null 2>&1 && break
+        sleep 2
+      done
+      # initialiser la base
       odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo --without-demo=all -i base --stop-after-init
     networks:
       - name: molnet
 
-  # Service Odoo : ENTRYPOINT par défaut, juste des options
+  # ---- Service Odoo (ENTRYPOINT par défaut) ----
   - name: odoo
     image: odoo:16
     pre_build_image: true
@@ -63,6 +68,7 @@ platforms:
     networks:
       - name: molnet
 
+  # ---- Hôte Ansible ----
   - name: instance
     image: ${MOLECULE_IMAGE:-geerlingguy/docker-ubuntu2204-ansible}
     command: /sbin/init

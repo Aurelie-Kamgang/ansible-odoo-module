@@ -35,35 +35,38 @@
     - name: Gather facts (after python available)
       ansible.builtin.setup:
 
-    # Vérifie que les noms se résolvent côté 'instance'
+    # --- Debug rapide DNS/IP ---
     - name: Check name resolution for db and odoo
       ansible.builtin.command: getent hosts {{ item }}
       register: getent_out
       changed_when: false
       failed_when: getent_out.rc != 0
-      loop:
-        - db
-        - odoo
+      loop: [ "db", "odoo" ]
 
-    # Attendre le Postgres avant Odoo (depuis 'instance')
+    - name: Compute DB and Odoo IP from inventory
+      ansible.builtin.set_fact:
+        db_host: "{{ hostvars['db']['ansible_host'] | default('db') }}"
+        odoo_host: "{{ hostvars['odoo']['ansible_host'] | default('odoo') }}"
+
+    # --- Attendre Postgres (par IP/nom) ---
     - name: Wait for Postgres 5432
       ansible.builtin.wait_for:
-        host: db
+        host: "{{ db_host }}"
         port: 5432
-        delay: 3
-        timeout: 180
+        delay: 5
+        timeout: 300   # allonge un peu (init peut être long en CI)
 
-    # Attendre que Odoo expose 8069
-    - name: Wait TCP 8069 (by name)
+    # --- Attendre Odoo HTTP ---
+    - name: Wait TCP 8069
       ansible.builtin.wait_for:
-        host: odoo
+        host: "{{ odoo_host }}"
         port: 8069
         delay: 5
         timeout: 420
 
     - name: Wait for Odoo web login to answer 200
       ansible.builtin.uri:
-        url: http://odoo:8069/web/login
+        url: "http://{{ odoo_host }}:8069/web/login"
         status_code: 200
         return_content: false
       register: odoo_http
