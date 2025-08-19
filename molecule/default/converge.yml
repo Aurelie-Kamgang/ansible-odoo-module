@@ -13,6 +13,12 @@
           (command -v yum >/dev/null && yum install -y python3) )
       changed_when: false
 
+    - name: Ensure 'pi' user exists
+      ansible.builtin.user:
+        name: pi
+        shell: /bin/bash
+        create_home: true
+
     - name: Gather facts (after python available)
       ansible.builtin.setup:
 
