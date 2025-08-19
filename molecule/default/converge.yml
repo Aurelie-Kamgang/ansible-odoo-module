@@ -35,11 +35,24 @@
     - name: Gather facts (after python available)
       ansible.builtin.setup:
 
-  roles:
-    - role: diranetafen.odoo_module
-      vars:
-        # ➜ REMPLIS ICI les variables minimales requises par le rôle
-        #   (ex: odoo_module_name, addons_path, repo, version, etc.)
-        #   selon le README du rôle.
-        odoo_module_name: demo_module
-        odoo_addons_path: /opt/odoo/custom_addons
+    - name: Wait TCP 8069
+      ansible.builtin.wait_for:
+        host: odoo
+        port: 8069
+        delay: 5
+        timeout: 420
+
+    - name: Wait for Odoo web login to answer 200
+      ansible.builtin.uri:
+        url: http://odoo:8069/web/login
+        status_code: 200
+        return_content: false
+      register: odoo_http
+      retries: 30
+      delay: 5
+      until: odoo_http.status == 200
+
+  tasks:
+    - name: Include role under test (repo courant)
+      ansible.builtin.include_role:
+        name: "{{ lookup('env','MOLECULE_PROJECT_DIRECTORY') | basename }}"

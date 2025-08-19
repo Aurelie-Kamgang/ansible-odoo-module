@@ -9,6 +9,36 @@ driver:
   name: docker
 
 platforms:
+  # Base de données Postgres pour Odoo
+  - name: db
+    image: postgres:15-alpine
+    pre_build_image: true
+    environment:
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+      POSTGRES_DB: testdb
+
+  # Odoo (init de la DB puis lancement normal)
+  - name: odoo
+    image: odoo:16
+    pre_build_image: true
+    environment:
+      DB_HOST: db
+      DB_USER: odoo
+      DB_PASSWORD: odoo
+    command: >
+      bash -lc "
+        odoo -d testdb
+             --db_host=db --db_user=odoo --db_password=odoo
+             --without-demo=all -i base --stop-after-init
+        && odoo -d testdb
+                --db_host=db --db_user=odoo --db_password=odoo
+                --without-demo=all
+      "
+    published_ports:
+      - "8069:8069"
+
+  # Hôte où Ansible applique le rôle (matrix via MOLECULE_IMAGE)
   - name: instance
     image: ${MOLECULE_IMAGE:-geerlingguy/docker-ubuntu2204-ansible}
     command: /sbin/init
@@ -27,8 +57,10 @@ provisioner:
   config_options:
     defaults:
       host_key_checking: false
+
 verifier:
   name: ansible
+
 scenario:
   test_sequence:
     - dependency
@@ -42,4 +74,3 @@ scenario:
     - verify
     - cleanup
     - destroy
-

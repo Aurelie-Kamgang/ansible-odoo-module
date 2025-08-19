@@ -1,0 +1,25 @@
+# Connexion à l'Odoo du scénario Molecule
+odoo_host: "odoo"
+odoo_url: "http://odoo:8069"
+odoo_admin_login: "admin"
+odoo_admin_password: "admin"
+odoo_database_name: "testdb"
+odoo_port: 8069
+
+# Laisse la valeur par défaut si le rôle l'utilise pour des attentes
+timeout: 240
+
+# Pas d'install/upgrade/uninstall en CI (évite de rallonger/fragiliser)
+modules_to_install: []
+modules_to_uninstall: []
+modules_to_upgrade: []
+
+# Neutraliser la configuration “métier” pendant la CI
+pos_to_configure: {}
+customer_display_size_less_than_18: false
+company_to_configure: {}
+custom_modules_to_configure: []
+product_to_configure: []
+
+restaurant: false
+shop: false
