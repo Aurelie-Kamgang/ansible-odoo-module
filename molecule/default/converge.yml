@@ -35,16 +35,22 @@
     - name: Gather facts (after python available)
       ansible.builtin.setup:
 
-    - name: Wait TCP 8069
+
+    # 🔎 Récupère l'IP que Molecule a mise dans l'inventaire pour "odoo"
+    - name: Compute Odoo IP from inventory
+      ansible.builtin.set_fact:
+        odoo_ip: "{{ hostvars['odoo']['ansible_host'] | default('odoo') }}"
+
+    - name: Wait TCP 8069 (by IP, plus sûr que le nom)
       ansible.builtin.wait_for:
-        host: odoo
+        host: "{{ odoo_ip }}"
         port: 8069
         delay: 5
         timeout: 420
 
     - name: Wait for Odoo web login to answer 200
       ansible.builtin.uri:
-        url: http://odoo:8069/web/login
+        url: "http://{{ odoo_ip }}:8069/web/login"
         status_code: 200
         return_content: false
       register: odoo_http
