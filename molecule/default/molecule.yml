@@ -26,17 +26,22 @@ platforms:
       DB_HOST: db
       DB_USER: odoo
       DB_PASSWORD: odoo
-    # ⬇️ IMPORTANT : on remplace l’ENTRYPOINT par /bin/sh -lc
     entrypoint: ["/bin/sh", "-lc"]
-    command: >
-      bash -lc '
-        for i in $$(seq 1 120); do
-          (echo > /dev/tcp/db/5432) >/dev/null 2>&1 && break
-          echo "waiting for db..."; sleep 2
-        done;
-        odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo --without-demo=all -i base --stop-after-init;
-        exec odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo --without-demo=all
-      '
+    command: |
+      python3 - <<'PY'
+import socket, time, sys
+for _ in range(120):
+    try:
+        s = socket.create_connection(('db', 5432), 2)
+        s.close()
+        break
+    except Exception:
+        time.sleep(2)
+else:
+    sys.exit('db not ready')
+PY
+      odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo --without-demo=all -i base --stop-after-init
+      exec odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo --without-demo=all
     published_ports:
       - "8069:8069"
     networks:
@@ -52,10 +57,6 @@ platforms:
     tmpfs:
       - /run
       - /tmp
-    # Fallback /etc/hosts au cas où (optionnel mais pratique)
-    links:
-      - "odoo:odoo"
-      - "db:db"
     networks:
       - name: molnet
 
