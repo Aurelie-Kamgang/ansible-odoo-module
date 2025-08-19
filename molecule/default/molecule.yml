@@ -19,7 +19,8 @@ platforms:
     networks:
       - name: molnet
 
-  - name: odoo
+  # One-shot: attend Postgres et initialise la DB Odoo, puis s'arrête
+  - name: odoo_init
     image: odoo:16
     pre_build_image: true
     environment:
@@ -41,7 +42,22 @@ platforms:
           sys.exit('db not ready')
       PY
       odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo --without-demo=all -i base --stop-after-init
-      exec odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo --without-demo=all
+    networks:
+      - name: molnet
+
+  # Service Odoo : ENTRYPOINT par défaut, juste des options
+  - name: odoo
+    image: odoo:16
+    pre_build_image: true
+    environment:
+      DB_HOST: db
+      DB_USER: odoo
+      DB_PASSWORD: odoo
+    command: >
+      --database testdb
+      --db_host db --db_user odoo --db_password odoo
+      --without-demo=all
+      --http-interface 0.0.0.0 --http-port 8069
     published_ports:
       - "8069:8069"
     networks:
