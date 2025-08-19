@@ -1,4 +1,5 @@
 roles:
-  - name: diranetafen.odoo_module   # nom Galaxy du rôle
-    # src: diranetafen.odoo_module  # (optionnel si publié sur Galaxy)
-collections: []
+  - name: diranetafen.odoo_module
+    src: https://github.com/diranetafen/ansible-odoo-module.git
+    scm: git
+    version: main   # ou un tag/commit pour figer la version
