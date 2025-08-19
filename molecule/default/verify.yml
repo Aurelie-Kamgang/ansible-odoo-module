@@ -1,0 +1,10 @@
+  post_tasks:
+    - name: Le répertoire de l’addon existe ?
+      ansible.builtin.stat:
+        path: "/opt/odoo/custom_addons/{{ odoo_module_name }}"
+      register: addon_dir
+
+    - name: Assert addon créé
+      ansible.builtin.assert:
+        that:
+          - addon_dir.stat.exists
