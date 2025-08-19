@@ -19,11 +19,17 @@
         shell: /bin/bash
         create_home: true
 
-    # Dans pre_tasks de converge.yml (Ubuntu/Debian)
-    - name: Install python2 (if available) and point python -> python2
+    - name: Ensure 'python' shim points to python3
       ansible.builtin.raw: |
-        (command -v apt-get && apt-get update -y && apt-get install -y python2) || true
-        if command -v python2 >/dev/null; then ln -sf "$(command -v python2)" /usr/bin/python; fi
+        command -v python >/dev/null && exit 0
+        if command -v apt-get >/dev/null; then
+          apt-get update -y && apt-get install -y python-is-python3 || ln -sf /usr/bin/python3 /usr/bin/python
+        elif command -v dnf >/dev/null || command -v yum >/dev/null; then
+          (command -v dnf && dnf install -y python3) || (command -v yum && yum install -y python3)
+          (command -v alternatives && alternatives --install /usr/bin/python python /usr/bin/python3 1) || ln -sf /usr/bin/python3 /usr/bin/python
+        else
+          ln -sf /usr/bin/python3 /usr/bin/python
+        fi
       changed_when: false
 
     - name: Gather facts (after python available)
