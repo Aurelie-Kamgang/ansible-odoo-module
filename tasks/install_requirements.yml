@@ -1,6 +1,7 @@
 ---
 # Task to Install prerequisites
   - name: Install odoorpc
-    pip3:
+    pip:
       name: odoorpc
+      executable: pip3
     become: true
