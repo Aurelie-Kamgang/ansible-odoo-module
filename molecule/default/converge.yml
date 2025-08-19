@@ -36,12 +36,11 @@
       ansible.builtin.setup:
 
 
-    # 🔎 Récupère l'IP que Molecule a mise dans l'inventaire pour "odoo"
     - name: Compute Odoo IP from inventory
       ansible.builtin.set_fact:
         odoo_ip: "{{ hostvars['odoo']['ansible_host'] | default('odoo') }}"
 
-    - name: Wait TCP 8069 (by IP, plus sûr que le nom)
+    - name: Wait TCP 8069 (by IP)
       ansible.builtin.wait_for:
         host: "{{ odoo_ip }}"
         port: 8069
