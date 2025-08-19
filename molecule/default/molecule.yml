@@ -1,3 +1,10 @@
+dependency:
+  name: galaxy
+  options:
+    role-file: requirements.yml
+    roles-path: "${MOLECULE_EPHEMERAL_DIRECTORY}/roles"
+    force: true
+
 driver:
   name: docker
 
