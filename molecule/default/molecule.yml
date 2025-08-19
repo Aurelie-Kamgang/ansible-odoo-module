@@ -11,7 +11,7 @@ driver:
 platforms:
   # ---- Postgres avec healthcheck + port publié ----
   - name: db
-    image: postgres:15           # <- debian-based, plus prévisible
+    image: postgres:15
     pre_build_image: true
     environment:
       POSTGRES_USER: odoo
@@ -22,7 +22,6 @@ platforms:
       - "5432:5432"
     networks:
       - name: molnet
-    # Healthcheck côté container (requis pour que odoo_init sache attendre)
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U odoo -d testdb"]
       interval: 5s
@@ -40,11 +39,19 @@ platforms:
       DB_PASSWORD: odoo
     entrypoint: ["/bin/sh", "-lc"]
     command: |
-      # attendre que le healthcheck de Postgres passe
-      for i in $(seq 1 180); do
-        pg_isready -h db -p 5432 -U odoo -d testdb >/dev/null 2>&1 && break
-        sleep 2
-      done
+      python3 - <<'PY'
+      import socket, time, sys
+      # attendre Postgres sur 'db:5432'
+      for _ in range(180):
+          try:
+              s = socket.create_connection(('db', 5432), 2)
+              s.close()
+              break
+          except Exception:
+              time.sleep(2)
+      else:
+          sys.exit('db not ready')
+      PY
       # initialiser la base
       odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo --without-demo=all -i base --stop-after-init
     networks:
