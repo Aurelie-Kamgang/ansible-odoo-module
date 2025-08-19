@@ -4,11 +4,14 @@ driver:
 platforms:
   - name: instance
     image: ${MOLECULE_IMAGE:-geerlingguy/docker-ubuntu2204-ansible}
-    pre_build_image: true
-    privileged: true
     command: /sbin/init
+    privileged: true
+    cgroupns_mode: host
     volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /tmp
 
 provisioner:
   name: ansible
@@ -17,7 +20,20 @@ provisioner:
   config_options:
     defaults:
       host_key_checking: false
-
 verifier:
-  name: testinfra
+  name: ansible
+scenario:
+  test_sequence:
+    - dependency
+    - lint
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - side_effect
+    - verify
+    - cleanup
+    - destroy
 
