@@ -2,4 +2,4 @@ roles:
   - name: diranetafen.odoo_module
     src: https://github.com/diranetafen/ansible-odoo-module.git
     scm: git
-    version: main   # ou un tag/commit pour figer la version
+    version: master   # ou un tag/commit pour figer la version
