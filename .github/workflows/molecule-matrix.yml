@@ -34,12 +34,6 @@ jobs:
       - name: Install collections
         run: ansible-galaxy collection install -r collections/requirements.yml
 
-
-      - name: Run Molecule ${{ matrix.label }}
-        env:
-          MOLECULE_IMAGE: ${{ matrix.image }}
-        run: molecule dependency
-
       - name: Run Molecule ${{ matrix.label }}
         env:
           MOLECULE_IMAGE: ${{ matrix.image }}
