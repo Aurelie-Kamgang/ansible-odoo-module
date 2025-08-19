@@ -1,8 +1,22 @@
+---
 - name: Converge
   hosts: all
-  become: true
-  gather_facts: true
+  gather_facts: false
+  become: false
+
+  pre_tasks:
+    # Garantit Python dans les images qui n'en ont pas (EL, etc.)
+    - name: Ensure Python 3 is present (bootstrap)
+      ansible.builtin.raw: |
+        test -e /usr/bin/python3 || \
+        ( (command -v apt-get >/dev/null && apt-get update -y && apt-get install -y python3) || \
+          (command -v dnf >/dev/null && dnf install -y python3) || \
+          (command -v yum >/dev/null && yum install -y python3) )
+      changed_when: false
+
+    - name: Gather facts (after python available)
+      ansible.builtin.setup:
+
   tasks:
     - name: Ping
-      ansible.builtin.ping: ~
-
+      ansible.builtin.ping:
