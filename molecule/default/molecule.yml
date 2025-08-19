@@ -29,8 +29,8 @@ platforms:
     command: >
       bash -lc '
         # attendre que Postgres écoute
-        for i in $(seq 1 120); do
-          (echo >/dev/tcp/db/5432) >/dev/null 2>&1 && break
+        for i in $$(seq 1 120); do
+          (echo > /dev/tcp/db/5432) >/dev/null 2>&1 && break
           echo "waiting for db..."; sleep 2
         done;
         # init DB avec le module de base puis lancer Odoo
