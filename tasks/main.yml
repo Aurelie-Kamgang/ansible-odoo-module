@@ -1,38 +1,38 @@
 ---
 # tasks file for module
 
-- include: install_requirements.yml
+- include_tasks: install_requirements.yml
   tags:
     - always
-- include: update_list.yml
+- include_tasks: update_list.yml
   tags:
     - install
     - upgrade
     - update_list
-- include: install_modules.yml
+- include_tasks: install_modules.yml
   tags:
     - install
     - upgrade
-- include: upgrade_modules.yml
+- include_tasks: upgrade_modules.yml
   tags:
     - upgrade
-#- include: configure_modules.yml
+#- include_tasks: configure_modules.yml
 #  tags:
 #    - install
 #    - update
 #    - configure
-- include: configure_custom_modules.yml
+- include_tasks: configure_custom_modules.yml
   tags:
     - configure
-- include: uninstall_modules.yml
+- include_tasks: uninstall_modules.yml
   tags:
     - uninstall
-- include: configure_pos.yml
+- include_tasks: configure_pos.yml
   tags:
     - pos
-- include: configure_company.yml
+- include_tasks: configure_company.yml
   tags:
     - company
-- include: configure_product.yml
+- include_tasks: configure_product.yml
   tags:
     - product
