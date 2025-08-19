@@ -1,0 +1,4 @@
+roles:
+  - name: diranetafen.odoo_module   # nom Galaxy du rôle
+    # src: diranetafen.odoo_module  # (optionnel si publié sur Galaxy)
+collections: []
