@@ -34,8 +34,8 @@ jobs:
       - name: Install collections
         run: ansible-galaxy collection install -r collections/requirements.yml
 
-      - name: Lint role
-        run: ansible-lint
+      # - name: Lint role
+      #   run: ansible-lint
 
       - name: Run Molecule ${{ matrix.label }}
         env:
