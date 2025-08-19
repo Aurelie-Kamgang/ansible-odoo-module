@@ -5,7 +5,6 @@
   become: false
 
   pre_tasks:
-    # Garantit Python dans les images qui n'en ont pas (EL, etc.)
     - name: Ensure Python 3 is present (bootstrap)
       ansible.builtin.raw: |
         test -e /usr/bin/python3 || \
@@ -17,6 +16,11 @@
     - name: Gather facts (after python available)
       ansible.builtin.setup:
 
-  tasks:
-    - name: Ping
-      ansible.builtin.ping:
+  roles:
+    - role: diranetafen.odoo_module
+      vars:
+        # ➜ REMPLIS ICI les variables minimales requises par le rôle
+        #   (ex: odoo_module_name, addons_path, repo, version, etc.)
+        #   selon le README du rôle.
+        odoo_module_name: demo_module
+        odoo_addons_path: /opt/odoo/custom_addons
