@@ -1,39 +1,49 @@
-- hosts: instance
-  gather_facts: false
+---
+- name: Converge
+  hosts: instance
+  gather_facts: true
 
-  pre_tasks:
-- name: Show container status
-  command: docker ps -a
-  delegate_to: localhost
-  register: docker_ps
-  changed_when: false
+  tasks:
+    - name: Ensure Python 3 is present (bootstrap)
+      become: true
+      raw: |
+        test -e /usr/bin/python3 || (apt-get update -y && apt-get install -y python3)
 
-- debug:
-    var: docker_ps.stdout_lines
+    - name: Ensure 'pi' user exists (only on instance)
+      become: true
+      user:
+        name: pi
+        state: present
 
-    
-    - name: Wait until Postgres logs say "ready to accept connections"
+    - name: Show container status
+      command: docker ps -a
       delegate_to: localhost
-      run_once: true
-      retries: 120
-      delay: 5
+      register: docker_ps
       changed_when: false
+
+    - debug:
+        var: docker_ps.stdout_lines
+
+    - name: Wait until Postgres logs say 'ready to accept connections'
       shell: |
-        docker logs db 2>&1 | tail -n 400 | grep -q "database system is ready to accept connections"
-    
-    - name: Show last Odoo logs (for debug if needed)
+        docker logs db 2>&1 | tail -n 200 | grep -q "database system is ready to accept connections"
+      args:
+        executable: /bin/bash
       delegate_to: localhost
-      run_once: true
+      register: pg_ready
+      until: pg_ready.rc == 0
+      retries: 180
+      delay: 2
       changed_when: false
-      shell: docker logs --tail=200 odoo || true
 
-    - name: Wait until Odoo HTTP is reachable
+    - name: Wait until Odoo answers on 8069
       wait_for:
-        host: "{{ odoo_host | default('odoo') }}"
-        port: "{{ odoo_port | default(8069) }}"
-        connect_timeout: 2
-        delay: 1
+        host: 127.0.0.1
+        port: 8069
         timeout: 900
+        state: started
+      delegate_to: localhost
+      changed_when: false
 
   roles:
     - role: diranetafen.odoo_module
