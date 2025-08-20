@@ -6,50 +6,29 @@
   pre_tasks:
     - name: Ensure 'pi' user exists
       become: true
-      user:
+      ansible.builtin.user:
         name: pi
         state: present
 
   tasks:
     - name: Ensure Python 3 is present (bootstrap)
       become: true
-      raw: |
+      ansible.builtin.raw: |
         test -e /usr/bin/python3 || (apt-get update -y && apt-get install -y python3)
 
     - name: Show container status (runner)
-      command: docker ps -a
+      ansible.builtin.command: docker ps -a
       delegate_to: localhost
       register: docker_ps
       changed_when: false
 
-    - debug:
+    - name: Debug docker ps
+      ansible.builtin.debug:
         var: docker_ps.stdout_lines
-
-- name: Logs db
-  command: docker logs --tail=200 db
-  delegate_to: localhost
-  register: logs_db
-  changed_when: false
-- debug: var=logs_db.stdout_lines
-
-- name: Logs odoo_init
-  command: docker logs --tail=200 odoo_init
-  delegate_to: localhost
-  register: logs_init
-  changed_when: false
-- debug: var=logs_init.stdout_lines
-
-- name: Logs odoo
-  command: docker logs --tail=200 odoo
-  delegate_to: localhost
-  register: logs_odoo
-  changed_when: false
-- debug: var=logs_odoo.stdout_lines
-
 
     # Attendre Postgres côté runner (port publié)
     - name: Wait until Postgres (runner) listens on 5432
-      wait_for:
+      ansible.builtin.wait_for:
         host: 127.0.0.1
         port: 5432
         timeout: 300
@@ -57,22 +36,23 @@
       delegate_to: localhost
       changed_when: false
 
-    # S'assurer que le one-shot est fini
+    # S'assurer que le one-shot est fini (échappement des {{ }})
     - name: Wait until odoo_init finished successfully (or exited)
-      command: docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' odoo_init
+      ansible.builtin.command: >
+        docker inspect -f '{{"{{"}}.State.Status{{"}}"}} {{"{{"}}.State.ExitCode{{"}}"}}' odoo_init
       delegate_to: localhost
       register: odoo_init_state
+      until: >
+        ('exited 0' in odoo_init_state.stdout) or
+        ('exited 137' in odoo_init_state.stdout) or
+        ('running' in odoo_init_state.stdout)
       retries: 180
       delay: 2
-      until: >
-        (odoo_init_state.stdout is search('exited 0')) or
-        (odoo_init_state.stdout is search('exited 137')) or
-        (odoo_init_state.stdout is search('running'))
       changed_when: false
 
-    # Attendre Odoo coté runner
+    # Attendre Odoo côté runner
     - name: Wait until Odoo answers on 8069 (runner)
-      wait_for:
+      ansible.builtin.wait_for:
         host: 127.0.0.1
         port: 8069
         timeout: 900
@@ -80,25 +60,25 @@
       delegate_to: localhost
       changed_when: false
 
-    # Attendre Odoo depuis 'instance' vers le service DNS 'odoo'
+    # Attendre Odoo depuis 'instance' vers le service 'odoo'
     - name: Wait until Odoo answers on 8069 (from instance)
-      wait_for:
+      ansible.builtin.wait_for:
         host: odoo
         port: 8069
         timeout: 900
         state: started
       changed_when: false
 
-    # (optionnel) ping HTTP
+    # Ping HTTP pour confirmer que le webclient répond
     - name: Wait Odoo HTTP /web/webclient/version_info returns 200
-      uri:
+      ansible.builtin.uri:
         url: http://odoo:8069/web/webclient/version_info
         method: GET
         status_code: 200
       register: odoo_http
+      until: odoo_http.status == 200
       retries: 90
       delay: 5
-      until: odoo_http.status == 200
       changed_when: false
 
   roles:
