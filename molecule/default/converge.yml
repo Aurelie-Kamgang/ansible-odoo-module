@@ -10,6 +10,12 @@
         name: pi
         state: present
 
+  tasks:
+    - name: Ensure Python 3 is present (bootstrap)
+      become: true
+      raw: |
+        test -e /usr/bin/python3 || (apt-get update -y && apt-get install -y python3)
+
     - name: Show container status (runner)
       command: docker ps -a
       delegate_to: localhost
@@ -19,30 +25,31 @@
     - debug:
         var: docker_ps.stdout_lines
 
-    - name: Wait until Postgres logs say 'ready to accept connections' (runner)
-      shell: |
-        docker logs db 2>&1 | grep -q "database system is ready to accept connections"
-      args:
-        executable: /bin/bash
+    # Attendre Postgres côté runner (port publié)
+    - name: Wait until Postgres (runner) listens on 5432
+      wait_for:
+        host: 127.0.0.1
+        port: 5432
+        timeout: 300
+        state: started
       delegate_to: localhost
-      register: pg_ready
-      until: pg_ready.rc == 0
-      retries: 180
-      delay: 2
       changed_when: false
 
-    - name: Wait until odoo_init finished successfully (runner)
+    # S'assurer que le one-shot odoo_init est terminé (succès ou en cours)
+    - name: Wait until odoo_init finished successfully (or exited)
       command: docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' odoo_init
       delegate_to: localhost
       register: odoo_init_state
       retries: 180
       delay: 2
       until: >
-        ('exited 0' in odoo_init_state.stdout) or
-        ('running' in odoo_init_state.stdout)
+        (odoo_init_state.stdout is search('exited 0')) or
+        (odoo_init_state.stdout is search('exited 137')) or
+        (odoo_init_state.stdout is search('running'))
       changed_when: false
 
-    - name: Wait until Odoo answers on 8069 (runner → port publié)
+    # Attendre Odoo côté runner (port publié)
+    - name: Wait until Odoo answers on 8069 (runner)
       wait_for:
         host: 127.0.0.1
         port: 8069
@@ -51,7 +58,8 @@
       delegate_to: localhost
       changed_when: false
 
-    - name: Wait until Odoo answers on 8069 from instance (réseau molnet)
+    # Vérifier aussi depuis le conteneur "instance" vers le service "odoo"
+    - name: Wait until Odoo answers on 8069 (from instance)
       wait_for:
         host: odoo
         port: 8069
@@ -59,6 +67,7 @@
         state: started
       changed_when: false
 
+    # (Optionnel) Vérifier l'endpoint HTTP d'Odoo
     - name: Wait Odoo HTTP /web/webclient/version_info returns 200
       uri:
         url: http://odoo:8069/web/webclient/version_info
