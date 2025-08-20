@@ -6,7 +6,7 @@
   pre_tasks:
     - name: Ensure 'pi' user exists
       become: true
-      ansible.builtin/user:
+      user:
         name: pi
         state: present
 
