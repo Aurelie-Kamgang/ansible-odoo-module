@@ -76,7 +76,7 @@ platforms:
 
   # ---------- Hôte Ansible ----------
   - name: instance
-    image: $${MOLECULE_IMAGE:-geerlingguy/docker-ubuntu2204-ansible}  # attention: $$ pour échapper
+    image: "${MOLECULE_IMAGE}"   # <- plus de $${...} ni ':-'
     command: /sbin/init
     privileged: true
     cgroupns_mode: host
