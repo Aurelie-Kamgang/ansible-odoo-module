@@ -41,7 +41,7 @@ platforms:
     command: |
       # attendre que Postgres soit healthy
       for i in $$(seq 1 180); do
-        pg_isready -h db -p 5432 -U odoo -d testdb >/dev/null 2>&1 && break
+        (echo > /dev/tcp/db/5432) >/dev/null 2>&1 && break
         sleep 2
       done
       # initialiser la base avec le module 'base'
