@@ -16,8 +16,8 @@ jobs:
             image: geerlingguy/docker-ubuntu2204-ansible
           - label: debian12
             image: geerlingguy/docker-debian12-ansible
-          - label: rockylinux8
-            image: geerlingguy/docker-rockylinux8-ansible
+          # - label: rockylinux8
+          #   image: geerlingguy/docker-rockylinux8-ansible
 
     steps:
       - uses: actions/checkout@v4
