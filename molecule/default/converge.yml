@@ -25,6 +25,28 @@
     - debug:
         var: docker_ps.stdout_lines
 
+- name: Logs db
+  command: docker logs --tail=200 db
+  delegate_to: localhost
+  register: logs_db
+  changed_when: false
+- debug: var=logs_db.stdout_lines
+
+- name: Logs odoo_init
+  command: docker logs --tail=200 odoo_init
+  delegate_to: localhost
+  register: logs_init
+  changed_when: false
+- debug: var=logs_init.stdout_lines
+
+- name: Logs odoo
+  command: docker logs --tail=200 odoo
+  delegate_to: localhost
+  register: logs_odoo
+  changed_when: false
+- debug: var=logs_odoo.stdout_lines
+
+
     # Attendre Postgres côté runner (port publié)
     - name: Wait until Postgres (runner) listens on 5432
       wait_for:
