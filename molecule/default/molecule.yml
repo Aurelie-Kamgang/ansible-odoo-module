@@ -1,6 +1,9 @@
 ---
 dependency:
   name: galaxy
+  options:
+    ignore-errors: true
+    force: true
 driver:
   name: docker
 platforms:
