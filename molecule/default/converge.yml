@@ -103,11 +103,20 @@
       run_once: true
 
   roles:
-    - role: diranetafen.odoo_module
-      vars:
-        odoo_host: "{{ odoo_host_ip | default('odoo') }}"
-        odoo_url: "http://{{ odoo_host_ip | default('odoo') }}"
-        odoo_admin_login: admin
-        odoo_admin_password: admin
-        odoo_database_name: testdb
-        odoo_port: 8069
+  - role: diranetafen.odoo_module
+    vars:
+      odoo_host: "odoo"          # ← nom DNS du conteneur dans le même network
+      odoo_port: 8069
+      odoo_database_name: testdb
+      odoo_admin_login: admin
+      odoo_admin_password: admin
+# =======
+#     - role: diranetafen.odoo_module
+#       vars:
+#         odoo_host: "{{ odoo_host_ip | default('odoo') }}"
+#         odoo_url: "http://{{ odoo_host_ip | default('odoo') }}"
+#         odoo_admin_login: admin
+#         odoo_admin_password: admin
+#         odoo_database_name: testdb
+#         odoo_port: 8069
+# >>>>>>> a4e4a54f7fe7869697fb59bc31abec7b0eed0d55

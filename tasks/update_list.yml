@@ -18,6 +18,14 @@
     path: "{{ temp_dir.path }}/{{ update_list_script_dest }}"
   register: stat_result
 
+- name: Wait until Odoo HTTP API is reachable
+  ansible.builtin.wait_for:
+    host: "{{ odoo_host | default('odoo') }}"
+    port: "{{ odoo_port | default(8069) }}"
+    connect_timeout: 2
+    delay: 1
+    timeout: 900
+
 # Convertir automatiquement le script Python 2 -> Python 3, si présent
 - name: Convert script to Python 3 (lib2to3)
   ansible.builtin.shell: |
