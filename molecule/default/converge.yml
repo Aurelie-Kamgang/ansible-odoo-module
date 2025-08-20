@@ -2,11 +2,15 @@
   gather_facts: false
 
   pre_tasks:
-    - name: Show container status
-      delegate_to: localhost
-      run_once: true
-      changed_when: false
-      shell: docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+- name: Show container status
+  command: docker ps -a
+  delegate_to: localhost
+  register: docker_ps
+  changed_when: false
+
+- debug:
+    var: docker_ps.stdout_lines
+
     
     - name: Wait until Postgres logs say "ready to accept connections"
       delegate_to: localhost
