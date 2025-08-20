@@ -9,7 +9,7 @@ driver:
   name: docker
 
 platforms:
-  # ---------- Postgres (port publié + healthcheck) ----------
+  # ---------- Postgres ----------
   - name: db
     image: postgres:15
     pre_build_image: true
@@ -37,24 +37,22 @@ platforms:
       DB_HOST: db
       DB_USER: odoo
       DB_PASSWORD: odoo
-    command:
-      - /bin/sh
-      - -c
-      - |
-        # Attendre que Postgres écoute (TCP) sur db:5432
-        python3 - <<'PY'
-        import socket, time, sys
-        for _ in range(180):
-            try:
-                socket.create_connection(("db", 5432), 1).close()
-                sys.exit(0)
-            except OSError:
-                time.sleep(2)
-        sys.exit(1)
-        PY
-        # Initialiser la base avec le module 'base'
-        exec odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo \
-          --without-demo=all -i base --stop-after-init
+    entrypoint: ["/bin/sh","-c"]          # <-- on BYPASSE /entrypoint.sh
+    command: |
+      # attendre l'ouverture TCP de Postgres
+      python3 - <<'PY'
+      import socket, time, sys
+      for _ in range(180):
+          try:
+              socket.create_connection(("db", 5432), 1).close()
+              sys.exit(0)
+          except OSError:
+              time.sleep(2)
+      sys.exit(1)
+      PY
+      # initialiser la base avec 'base'
+      exec odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo \
+        --without-demo=all -i base --stop-after-init
     networks:
       - name: molnet
 
@@ -66,26 +64,24 @@ platforms:
       DB_HOST: db
       DB_USER: odoo
       DB_PASSWORD: odoo
-    command:
-      - /bin/sh
-      - -c
-      - |
-        # Attendre que Postgres réponde
-        python3 - <<'PY'
-        import socket, time, sys
-        for _ in range(180):
-            try:
-                socket.create_connection(("db", 5432), 1).close()
-                sys.exit(0)
-            except OSError:
-                time.sleep(2)
-        sys.exit(1)
-        PY
-        # Lancer Odoo
-        exec odoo --database testdb \
-          --db_host db --db_user odoo --db_password odoo \
-          --without-demo=all \
-          --http-interface 0.0.0.0 --http-port 8069
+    entrypoint: ["/bin/sh","-c"]          # <-- idem ici
+    command: |
+      # attendre Postgres
+      python3 - <<'PY'
+      import socket, time, sys
+      for _ in range(180):
+          try:
+              socket.create_connection(("db", 5432), 1).close()
+              sys.exit(0)
+          except OSError:
+              time.sleep(2)
+      sys.exit(1)
+      PY
+      # lancer Odoo
+      exec odoo --database testdb \
+        --db_host db --db_user odoo --db_password odoo \
+        --without-demo=all \
+        --http-interface 0.0.0.0 --http-port 8069
     published_ports:
       - "8069:8069"
     networks:
