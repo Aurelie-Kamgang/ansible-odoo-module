@@ -122,8 +122,11 @@
         group: odoo
         mode: '0755'
 
-  roles:
-    - role: ansible-odoo-module
+  tasks:
+    # Inclure les tâches du rôle directement
+    - name: Include role tasks
+      include_role:
+        name: diranetafen.odoo_module
       tags:
         - "{{ action | default('install') }}"
 
