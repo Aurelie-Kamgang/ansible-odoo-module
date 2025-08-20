@@ -1,8 +1,12 @@
 ---
 - name: Converge
-  hosts: all
+  hosts: instance
   gather_facts: false
   become: false
+
+  vars:
+    pg_ready_timeout: 600   # 10 min max pour initdb la première fois
+    odoo_ready_timeout: 420
 
   pre_tasks:
     - name: Ensure Python 3 is present (bootstrap)
@@ -13,13 +17,13 @@
           (command -v yum >/dev/null && yum install -y python3) )
       changed_when: false
 
-    - name: Ensure 'pi' user exists
+    - name: Ensure 'pi' user exists (only on instance)
       ansible.builtin.user:
         name: pi
         shell: /bin/bash
         create_home: true
 
-    - name: Ensure 'python' shim points to python3
+    - name: Ensure 'python' shim points to python3 (only on instance)
       ansible.builtin.raw: |
         command -v python >/dev/null && exit 0
         if command -v apt-get >/dev/null; then
@@ -35,13 +39,13 @@
     - name: Gather facts (after python available)
       ansible.builtin.setup:
 
-    - name: Check name resolution for db and odoo
+    - name: Check name resolution for db and odoo (depuis l'hôte Ansible)
       ansible.builtin.shell: getent hosts {{ item }}
       register: dns_out
       changed_when: false
       loop: [ "db", "odoo" ]
 
-    # --- NE PAS utiliser .State.Health : certains drivers ne l'exposent pas ---
+    # ---------- DB readiness (sans .State.Health) ----------
     - name: Ensure DB container is running
       ansible.builtin.shell: docker inspect -f '{{ "{{.State.Status}}" }}' db
       register: db_state
@@ -50,47 +54,72 @@
       delay: 5
       until: db_state.stdout.strip() == "running"
       delegate_to: localhost
+      run_once: true
 
-    # --- Attendre PostgreSQL réellement prêt (dans le conteneur) ---
-    - name: Wait until Postgres answers pg_isready
-      ansible.builtin.shell: docker exec db pg_isready -U odoo -d testdb
+    - name: Wait until Postgres logs say "ready to accept connections"
+      ansible.builtin.shell: >
+        /bin/sh -lc 'docker logs db 2>&1 | tail -n 200 |
+        grep -q "database system is ready to accept connections"'
+      register: pglog
+      changed_when: false
+      retries: "{{ (pg_ready_timeout // 5) | int }}"
+      delay: 5
+      until: pglog.rc == 0
+      delegate_to: localhost
+      run_once: true
+
+    - name: Confirm Postgres answers on 5432 (inside container)
+      ansible.builtin.shell: docker exec db pg_isready -h 127.0.0.1 -p 5432 -U odoo -d testdb
       register: pgready
       changed_when: false
-      retries: 90      # ~7,5 min
-      delay: 5
+      retries: 30
+      delay: 2
       until: pgready.rc == 0
       delegate_to: localhost
+      run_once: true
 
-    # --- L'init Odoo doit s'être terminée avec succès (exit 0) ---
-    - name: Wait for odoo_init to finish successfully
+    # ---------- Odoo init + service ----------
+    - name: Wait for odoo_init to finish successfully (one-shot container)
       ansible.builtin.shell: docker inspect -f '{{ "{{.State.Status}} {{.State.ExitCode}}" }}' odoo_init
       register: odoo_init_state
       changed_when: false
-      retries: 60
+      retries: 90
       delay: 5
       until: "'exited 0' in odoo_init_state.stdout"
       delegate_to: localhost
+      run_once: true
 
-    # --- Récupérer les IPs réelles de db et odoo ---
+    - name: Ensure Odoo service container is running
+      ansible.builtin.shell: docker inspect -f '{{ "{{.State.Status}}" }}' odoo
+      register: odoo_state
+      changed_when: false
+      retries: 60
+      delay: 5
+      until: odoo_state.stdout.strip() == "running"
+      delegate_to: localhost
+      run_once: true
+
+    # ---------- IPs réelles des conteneurs ----------
     - name: Get container IPs (db, odoo)
-      ansible.builtin.shell: docker inspect -f '{{ "{% raw %}{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}{% endraw %}" }}' {{ item }}
+      ansible.builtin.shell: >
+        docker inspect -f '{{ "{% raw %}{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}{% endraw %}" }}' {{ item }}
       register: ip_out
       changed_when: false
       loop: [ "db", "odoo" ]
       delegate_to: localhost
+      run_once: true
 
     - name: Set facts with real container IPs
       ansible.builtin.set_fact:
         db_host: "{{ (ip_out.results | selectattr('item','equalto','db')   | first).stdout | trim | default('db') }}"
         odoo_host: "{{ (ip_out.results | selectattr('item','equalto','odoo') | first).stdout | trim | default('odoo') }}"
 
-    # --- Attendre Odoo HTTP par IP ---
     - name: Wait TCP 8069 (by IP)
       ansible.builtin.wait_for:
         host: "{{ odoo_host }}"
         port: 8069
         delay: 5
-        timeout: 420
+        timeout: "{{ odoo_ready_timeout }}"
 
     - name: Wait for Odoo web login to answer 200
       ansible.builtin.uri:
@@ -105,13 +134,14 @@
   roles:
     - role: diranetafen.odoo_module
       vars:
+        # on injecte l'IP résolue par Docker
         odoo_host: "{{ odoo_host }}"
         odoo_url: "http://{{ odoo_host }}:8069"
         odoo_port: 8069
         odoo_admin_login: "admin"
         odoo_admin_password: "admin"
         odoo_database_name: "testdb"
-        modules_to_install: []     # reste vide pour un test rapide
+        modules_to_install: []
         modules_to_upgrade: []
         modules_to_uninstall: []
-        odoo_timeout: 240          # évite le warning sur le nom 'timeout'
+        odoo_timeout: 240   # évite le warning sur le nom réservé 'timeout'
