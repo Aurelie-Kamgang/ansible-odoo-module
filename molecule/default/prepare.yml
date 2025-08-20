@@ -1,0 +1,84 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Install Python and basic tools
+      raw: |
+        if command -v apt-get &> /dev/null; then
+          apt-get update -qq
+          apt-get install -y python3 python3-pip python3-dev curl wget gnupg2
+        elif command -v yum &> /dev/null; then
+          yum update -y
+          yum install -y python3 python3-pip python3-devel curl wget gnupg2
+        elif command -v dnf &> /dev/null; then
+          dnf update -y
+          dnf install -y python3 python3-pip python3-devel curl wget gnupg2
+        fi
+      changed_when: false
+
+    - name: Gather facts
+      setup:
+
+    - name: Install PostgreSQL
+      package:
+        name: "{{ postgresql_packages }}"
+        state: present
+      vars:
+        postgresql_packages:
+          - "{% if ansible_os_family == 'Debian' %}postgresql{% else %}postgresql-server{% endif %}"
+          - "{% if ansible_os_family == 'Debian' %}postgresql-contrib{% else %}postgresql-contrib{% endif %}"
+          - "{% if ansible_os_family == 'Debian' %}python3-psycopg2{% else %}python3-psycopg2{% endif %}"
+
+    - name: Initialize PostgreSQL (RedHat family)
+      command: postgresql-setup initdb
+      when: 
+        - ansible_os_family == 'RedHat'
+        - not (postgresql_initialized.stat.exists | default(false))
+      register: postgresql_init
+      
+    - name: Check if PostgreSQL is initialized
+      stat:
+        path: /var/lib/pgsql/data/postgresql.conf
+      register: postgresql_initialized
+      when: ansible_os_family == 'RedHat'
+
+    - name: Start and enable PostgreSQL
+      service:
+        name: postgresql
+        state: started
+        enabled: true
+
+    - name: Install Python dependencies for Odoo
+      pip:
+        name:
+          - odoorpc
+          - psycopg2-binary
+        state: present
+
+    - name: Create odoo system user
+      user:
+        name: odoo
+        system: true
+        shell: /bin/bash
+        home: /opt/odoo
+        create_home: true
+        state: present
+
+    - name: Create PostgreSQL odoo user
+      become_user: postgres
+      postgresql_user:
+        name: odoo
+        password: odoo
+        role_attr_flags: CREATEDB
+        state: present
+      vars:
+        ansible_ssh_pipelining: true
+
+    - name: Create test database
+      become_user: postgres
+      postgresql_db:
+        name: odoo_test
+        owner: odoo
+        state: present

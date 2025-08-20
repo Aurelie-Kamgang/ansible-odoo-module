@@ -2,7 +2,7 @@ name: Molecule Multi-OS Test
 
 on:
   push:
-    branches: [ master ]
+    branches: [ claude ]
   pull_request:
 
 jobs:

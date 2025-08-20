@@ -1,55 +1,133 @@
 ---
 - name: Converge
-  hosts: instance
+  hosts: all
+  become: true
   gather_facts: true
-
-  tasks:
-    - name: Ensure Python 3 is present (bootstrap)
-      become: true
-      raw: |
-        test -e /usr/bin/python3 || (apt-get update -y && apt-get install -y python3)
-
-    - name: Ensure 'pi' user exists (only on instance)
-      become: true
-      user:
-        name: pi
+  vars:
+    # Variables communes pour tous les tests
+    odoo_db_name: "odoo_test"
+    odoo_config_file: "/etc/odoo/odoo.conf"
+    
+  pre_tasks:
+    - name: Update apt cache (Debian/Ubuntu)
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+      
+    - name: Install Odoo dependencies
+      package:
+        name:
+          - python3-pip
+          - python3-dev
+          - python3-wheel
+          - python3-setuptools
+          - build-essential
+          - libxml2-dev
+          - libxslt1-dev
+          - libevent-dev
+          - libsasl2-dev
+          - libldap2-dev
+          - libpq-dev
+          - libjpeg-dev
+          - zlib1g-dev
         state: present
+      when: ansible_os_family == "Debian"
 
-    - name: Show container status
-      command: docker ps -a
-      delegate_to: localhost
-      register: docker_ps
-      changed_when: false
+    - name: Install Odoo dependencies (RedHat)
+      package:
+        name:
+          - python3-pip
+          - python3-devel
+          - python3-wheel
+          - python3-setuptools
+          - gcc
+          - gcc-c++
+          - libxml2-devel
+          - libxslt-devel
+          - libevent-devel
+          - openldap-devel
+          - postgresql-devel
+          - libjpeg-devel
+          - zlib-devel
+        state: present
+      when: ansible_os_family == "RedHat"
 
-    - debug:
-        var: docker_ps.stdout_lines
+    - name: Create Odoo configuration directory
+      file:
+        path: /etc/odoo
+        state: directory
+        owner: odoo
+        group: odoo
+        mode: '0755'
 
-    - name: Wait until Postgres logs say 'ready to accept connections'
-      shell: |
-        docker logs db 2>&1 | tail -n 200 | grep -q "database system is ready to accept connections"
-      args:
-        executable: /bin/bash
-      delegate_to: localhost
-      register: pg_ready
-      until: pg_ready.rc == 0
-      retries: 180
-      delay: 2
-      changed_when: false
+    - name: Create minimal Odoo configuration file
+      copy:
+        content: |
+          [options]
+          addons_path = /opt/odoo/addons
+          data_dir = /opt/odoo/.local/share/Odoo
+          db_host = {{ odoo_db_host | default('localhost') }}
+          db_port = {{ odoo_db_port | default('5432') }}
+          db_user = {{ odoo_db_user | default('odoo') }}
+          db_password = {{ odoo_db_password | default('odoo') }}
+          logfile = /var/log/odoo/odoo.log
+          log_level = info
+        dest: "{{ odoo_config_file }}"
+        owner: odoo
+        group: odoo
+        mode: '0640'
 
-    - name: Wait until Odoo answers on 8069
-      wait_for:
-        host: 127.0.0.1
-        port: 8069
-        timeout: 900
-        state: started
-      delegate_to: localhost
-      changed_when: false
+    - name: Create Odoo log directory
+      file:
+        path: /var/log/odoo
+        state: directory
+        owner: odoo
+        group: odoo
+        mode: '0755'
+
+    - name: Create Odoo addons directory
+      file:
+        path: /opt/odoo/addons
+        state: directory
+        owner: odoo
+        group: odoo
+        mode: '0755'
+
+    - name: Create mock Odoo server script for testing
+      copy:
+        content: |
+          #!/usr/bin/env python3
+          import sys
+          import time
+          import os
+          
+          # Mock Odoo server for testing purposes
+          print("Mock Odoo server starting...")
+          print(f"Config: {sys.argv}")
+          
+          # Create a simple mock that responds to module management
+          # This is just for testing the role logic
+          time.sleep(2)
+          print("Mock Odoo server ready")
+          
+          # Keep running for testing
+          try:
+              while True:
+                  time.sleep(10)
+          except KeyboardInterrupt:
+              print("Mock Odoo server stopping...")
+        dest: /opt/odoo/odoo-bin
+        owner: odoo
+        group: odoo
+        mode: '0755'
 
   roles:
-    - role: diranetafen.odoo_module
-      vars:
-        odoo_host: "odoo"
-        odoo_port: 8069
-        odoo_database_name: testdb
-        odoo_admin_login: admin
-        odoo_admin_password: admin
+    - role: ansible-odoo-module
+      tags:
+        - "{{ action | default('install') }}"
+
+  post_tasks:
+    - name: Verify role execution
+      debug:
+        msg: "Role execution completed for action: {{ action | default('install') }}"

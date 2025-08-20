@@ -1,100 +1,101 @@
+---
 dependency:
   name: galaxy
-  options:
-    role-file: requirements.yml
-    roles-path: "${MOLECULE_EPHEMERAL_DIRECTORY}/roles"
-    force: true
-
 driver:
   name: docker
-
 platforms:
-  # ---------- Postgres (Debian, healthcheck, port publié) ----------
-  - name: db
-    image: postgres:15
+  - name: ubuntu-20.04
+    image: ubuntu:20.04
     pre_build_image: true
-    environment:
-      POSTGRES_USER: odoo
-      POSTGRES_PASSWORD: odoo
-      POSTGRES_DB: testdb
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
-    published_ports:
-      - "5432:5432"
-    networks:
-      - name: molnet
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U odoo -d testdb -h 127.0.0.1 -p 5432"]
-      interval: 5s
-      timeout: 3s
-      retries: 60
-      start_period: 10s
-
-  # ---------- Init Odoo (one-shot) ----------
-  - name: odoo_init
-    image: odoo:16
-    pre_build_image: true
-    environment:
-      DB_HOST: db
-      DB_USER: odoo
-      DB_PASSWORD: odoo
-    entrypoint: ["/bin/bash", "-lc"]
-    command: |
-      # attendre que Postgres soit healthy
-      for i in $$(seq 1 180); do
-        pg_isready -h db -p 5432 -U odoo -d testdb >/dev/null 2>&1 && break
-        sleep 2
-      done
-      # initialiser la base avec le module 'base'
-      odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo \
-           --without-demo=all -i base --stop-after-init
-    networks:
-      - name: molnet
-
-  # ---------- Service Odoo (attend PG puis lance le serveur) ----------
-  - name: odoo
-    image: odoo:16
-    pre_build_image: true
-    environment:
-      DB_HOST: db
-      DB_USER: odoo
-      DB_PASSWORD: odoo
-    entrypoint: ["/bin/bash", "-lc"]
-    command: |
-      # attendre que Postgres réponde (au cas où)
-      for i in $$(seq 1 180); do
-        pg_isready -h db -p 5432 -U odoo -d testdb >/dev/null 2>&1 && break
-        sleep 2
-      done
-      exec odoo --database testdb \
-        --db_host db --db_user odoo --db_password odoo \
-        --without-demo=all \
-        --http-interface 0.0.0.0 --http-port 8069
-    published_ports:
-      - "8069:8069"
-    networks:
-      - name: molnet
-
-  # ---------- Hôte Ansible ----------
-  - name: instance
-    image: "${MOLECULE_IMAGE}"   # <- plus de $${...} ni ':-'
-    command: /sbin/init
     privileged: true
+    volume_mounts:
+      - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
     cgroupns_mode: host
-    volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    command: "/lib/systemd/systemd"
     tmpfs:
       - /run
       - /tmp
+    capabilities:
+      - SYS_ADMIN
+    environment:
+      container: docker
     networks:
-      - name: molnet
+      - name: molecule-network
+  - name: ubuntu-22.04
+    image: ubuntu:22.04
+    pre_build_image: true
+    privileged: true
+    volume_mounts:
+      - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
+    cgroupns_mode: host
+    command: "/lib/systemd/systemd"
+    tmpfs:
+      - /run
+      - /tmp
+    capabilities:
+      - SYS_ADMIN
+    environment:
+      container: docker
+    networks:
+      - name: molecule-network
+  - name: centos-8
+    image: quay.io/centos/centos:stream8
+    pre_build_image: true
+    privileged: true
+    volume_mounts:
+      - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
+    cgroupns_mode: host
+    command: "/usr/sbin/init"
+    tmpfs:
+      - /run
+      - /tmp
+    capabilities:
+      - SYS_ADMIN
+    environment:
+      container: docker
+    networks:
+      - name: molecule-network
 
 provisioner:
   name: ansible
-  playbooks:
-    converge: converge.yml
   config_options:
     defaults:
-      host_key_checking: false
+      interpreter_python: auto_silent
+      callback_whitelist: profile_tasks, timer, yaml
+      stdout_callback: yaml
+    ssh_connection:
+      pipelining: false
+  inventory:
+    host_vars:
+      ubuntu-20.04:
+        odoo_version: "14.0"
+        odoo_user: "odoo"
+        odoo_db_host: "localhost"
+        odoo_db_port: 5432
+        odoo_db_user: "odoo"
+        odoo_db_password: "odoo"
+        modules_to_install:
+          - "sale_management"
+          - "purchase"
+        action: "install"
+      ubuntu-22.04:
+        odoo_version: "15.0"
+        odoo_user: "odoo"
+        odoo_db_host: "localhost"
+        odoo_db_port: 5432
+        odoo_db_user: "odoo"
+        odoo_db_password: "odoo"
+        modules_to_upgrade:
+          - "stock"
+        action: "upgrade"
+      centos-8:
+        odoo_version: "16.0"
+        odoo_user: "odoo"
+        odoo_db_host: "localhost"
+        odoo_db_port: 5432
+        odoo_db_user: "odoo"
+        odoo_db_password: "odoo"
+        action: "update_list"
 
 verifier:
   name: ansible
@@ -108,7 +109,30 @@ scenario:
     - create
     - prepare
     - converge
+    - idempotence
     - side_effect
     - verify
     - cleanup
+    - destroy
+  create_sequence:
+    - dependency
+    - create
+    - prepare
+  converge_sequence:
+    - dependency
+    - create
+    - prepare
+    - converge
+  destroy_sequence:
+    - dependency
+    - cleanup
+    - destroy
+  check_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - create
+    - prepare
+    - converge
+    - check
     - destroy

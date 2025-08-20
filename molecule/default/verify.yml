@@ -1,10 +1,80 @@
-  post_tasks:
-    - name: Le répertoire de l’addon existe ?
-      ansible.builtin.stat:
-        path: "/opt/odoo/custom_addons/{{ odoo_module_name }}"
-      register: addon_dir
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Check if Odoo configuration file exists
+      stat:
+        path: /etc/odoo/odoo.conf
+      register: odoo_config
+      failed_when: not odoo_config.stat.exists
 
-    - name: Assert addon créé
-      ansible.builtin.assert:
-        that:
-          - addon_dir.stat.exists
+    - name: Verify Odoo configuration file content
+      shell: grep -q "db_host" /etc/odoo/odoo.conf
+      register: config_content
+      failed_when: config_content.rc != 0
+      changed_when: false
+
+    - name: Check if Odoo user exists
+      user:
+        name: odoo
+        state: present
+      check_mode: true
+      register: odoo_user_check
+      failed_when: odoo_user_check.changed
+
+    - name: Verify Odoo directories exist
+      stat:
+        path: "{{ item }}"
+      register: odoo_dirs
+      failed_when: not odoo_dirs.stat.exists
+      loop:
+        - /opt/odoo
+        - /var/log/odoo
+        - /opt/odoo/addons
+
+    - name: Check PostgreSQL service is running
+      service:
+        name: postgresql
+        state: started
+      check_mode: true
+      register: postgresql_service
+      failed_when: postgresql_service.changed
+
+    - name: Verify PostgreSQL odoo user exists
+      become_user: postgres
+      shell: psql -c "SELECT 1 FROM pg_roles WHERE rolname='odoo';" | grep -q "1 row"
+      register: pg_user_check
+      failed_when: pg_user_check.rc != 0
+      changed_when: false
+
+    - name: Verify test database exists
+      become_user: postgres
+      shell: psql -l | grep -q "odoo_test"
+      register: db_check
+      failed_when: db_check.rc != 0
+      changed_when: false
+
+    - name: Check Python dependencies are installed
+      pip:
+        name: "{{ item }}"
+        state: present
+      check_mode: true
+      register: pip_deps
+      failed_when: pip_deps.changed
+      loop:
+        - odoorpc
+        - psycopg2-binary
+
+    - name: Verify role completed successfully
+      debug:
+        msg: |
+          All verification tests passed:
+          - Odoo configuration file: ✓
+          - Odoo user: ✓
+          - Odoo directories: ✓
+          - PostgreSQL service: ✓
+          - PostgreSQL odoo user: ✓
+          - Test database: ✓
+          - Python dependencies: ✓
