@@ -45,7 +45,6 @@
       changed_when: false
       loop: [ "db", "odoo" ]
 
-    # ---------- DB readiness (sans .State.Health) ----------
     - name: Ensure DB container is running
       ansible.builtin.shell: docker inspect -f '{{ "{{.State.Status}}" }}' db
       register: db_state
@@ -56,24 +55,31 @@
       delegate_to: localhost
       run_once: true
 
-    - name: Wait until Postgres logs say "ready to accept connections"
+    - name: Get DB container IP
       ansible.builtin.shell: >
-        /bin/sh -lc 'docker logs db 2>&1 | tail -n 200 |
-        grep -q "database system is ready to accept connections"'
-      register: pglog
+        docker inspect -f '{{ "{% raw %}{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}{% endraw %}" }}' db
+      register: db_ip_out
       changed_when: false
-      retries: "{{ (pg_ready_timeout // 5) | int }}"
-      delay: 5
-      until: pglog.rc == 0
       delegate_to: localhost
       run_once: true
 
-    - name: Confirm Postgres answers on 5432 (inside container)
-      ansible.builtin.shell: docker exec db pg_isready -h 127.0.0.1 -p 5432 -U odoo -d testdb
+    - name: Set fact db_host
+      ansible.builtin.set_fact:
+        db_host: "{{ db_ip_out.stdout | trim | default('db') }}"
+
+    - name: Wait TCP 5432 (DB by IP)
+      ansible.builtin.wait_for:
+        host: "{{ db_host }}"
+        port: 5432
+        delay: 3
+        timeout: 900   # 15 min pour laisser initdb finir
+
+    - name: Confirm Postgres answers (pg_isready in container)
+      ansible.builtin.shell: docker exec db pg_isready -h 127.0.0.1 -p 5432 -U postgres
       register: pgready
       changed_when: false
-      retries: 30
-      delay: 2
+      retries: 60
+      delay: 5
       until: pgready.rc == 0
       delegate_to: localhost
       run_once: true
