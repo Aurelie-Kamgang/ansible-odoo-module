@@ -9,7 +9,7 @@ driver:
   name: docker
 
 platforms:
-  # ---------- Postgres (Debian, healthcheck, port publié) ----------
+  # ---------- Postgres (port publié + healthcheck) ----------
   - name: db
     image: postgres:15
     pre_build_image: true
@@ -37,20 +37,28 @@ platforms:
       DB_HOST: db
       DB_USER: odoo
       DB_PASSWORD: odoo
-    entrypoint: ["/bin/bash", "-lc"]
-    command: |
-      # attendre que Postgres soit healthy
-      for i in $$(seq 1 180); do
-        (echo > /dev/tcp/db/5432) >/dev/null 2>&1 && break
-        sleep 2
-      done
-      # initialiser la base avec le module 'base'
-      odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo \
-           --without-demo=all -i base --stop-after-init
+    command:
+      - /bin/sh
+      - -c
+      - |
+        # Attendre que Postgres écoute (TCP) sur db:5432
+        python3 - <<'PY'
+        import socket, time, sys
+        for _ in range(180):
+            try:
+                socket.create_connection(("db", 5432), 1).close()
+                sys.exit(0)
+            except OSError:
+                time.sleep(2)
+        sys.exit(1)
+        PY
+        # Initialiser la base avec le module 'base'
+        exec odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo \
+          --without-demo=all -i base --stop-after-init
     networks:
       - name: molnet
 
-  # ---------- Service Odoo (attend PG puis lance le serveur) ----------
+  # ---------- Service Odoo ----------
   - name: odoo
     image: odoo:16
     pre_build_image: true
@@ -58,17 +66,26 @@ platforms:
       DB_HOST: db
       DB_USER: odoo
       DB_PASSWORD: odoo
-    entrypoint: ["/bin/bash", "-lc"]
-    command: |
-      # attendre que Postgres réponde (au cas où)
-      for i in $$(seq 1 180); do
-        pg_isready -h db -p 5432 -U odoo -d testdb >/dev/null 2>&1 && break
-        sleep 2
-      done
-      exec odoo --database testdb \
-        --db_host db --db_user odoo --db_password odoo \
-        --without-demo=all \
-        --http-interface 0.0.0.0 --http-port 8069
+    command:
+      - /bin/sh
+      - -c
+      - |
+        # Attendre que Postgres réponde
+        python3 - <<'PY'
+        import socket, time, sys
+        for _ in range(180):
+            try:
+                socket.create_connection(("db", 5432), 1).close()
+                sys.exit(0)
+            except OSError:
+                time.sleep(2)
+        sys.exit(1)
+        PY
+        # Lancer Odoo
+        exec odoo --database testdb \
+          --db_host db --db_user odoo --db_password odoo \
+          --without-demo=all \
+          --http-interface 0.0.0.0 --http-port 8069
     published_ports:
       - "8069:8069"
     networks:
@@ -76,7 +93,7 @@ platforms:
 
   # ---------- Hôte Ansible ----------
   - name: instance
-    image: "${MOLECULE_IMAGE}"   # <- plus de $${...} ni ':-'
+    image: "${MOLECULE_IMAGE}"
     command: /sbin/init
     privileged: true
     cgroupns_mode: host
