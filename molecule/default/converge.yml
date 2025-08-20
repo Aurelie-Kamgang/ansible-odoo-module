@@ -1,122 +1,41 @@
----
-- name: Converge
-  hosts: instance
+- hosts: instance
   gather_facts: false
-  become: false
 
   pre_tasks:
-    - name: Ensure Python 3 is present (bootstrap)
-      ansible.builtin.raw: |
-        test -e /usr/bin/python3 || \
-        ( (command -v apt-get >/dev/null && apt-get update -y && apt-get install -y python3) || \
-          (command -v dnf >/dev/null && dnf install -y python3) || \
-          (command -v yum >/dev/null && yum install -y python3) )
-      changed_when: false
-
-    - name: Ensure 'pi' user exists (only on instance)
-      ansible.builtin.user:
-        name: pi
-        shell: /bin/bash
-        create_home: true
-
-    - name: Ensure 'python' shim points to python3 (only on instance)
-      ansible.builtin.raw: |
-        command -v python >/dev/null && exit 0
-        if command -v apt-get >/dev/null; then
-          apt-get update -y && apt-get install -y python-is-python3 || ln -sf /usr/bin/python3 /usr/bin/python
-        elif command -v dnf >/dev/null || command -v yum >/dev/null; then
-          (command -v dnf && dnf install -y python3) || (command -v yum && yum install -y python3)
-          (command -v alternatives && alternatives --install /usr/bin/python python /usr/bin/python3 1) || ln -sf /usr/bin/python3 /usr/bin/python
-        else
-          ln -sf /usr/bin/python3 /usr/bin/python
-        fi
-      changed_when: false
-
-    - name: Gather facts (after python available)
-      ansible.builtin.setup:
-
-  tasks:
-    # --- DB: ne pas tester le DNS; vérifier l'état via docker ---
-    - name: Ensure DB container is running
-      ansible.builtin.shell: docker inspect -f '{{"{{.State.Status}}"}}' db
-      register: db_state
-      changed_when: false
-      retries: 60
-      delay: 5
-      until: db_state.stdout | trim == "running"
+    - name: Show container status
       delegate_to: localhost
       run_once: true
+      changed_when: false
+      shell: docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+    
+    - name: Wait until Postgres logs say "ready to accept connections"
+      delegate_to: localhost
+      run_once: true
+      retries: 120
+      delay: 5
+      changed_when: false
+      shell: |
+        docker logs db 2>&1 | tail -n 400 | grep -q "database system is ready to accept connections"
+    
+    - name: Show last Odoo logs (for debug if needed)
+      delegate_to: localhost
+      run_once: true
+      changed_when: false
+      shell: docker logs --tail=200 odoo || true
 
-    - name: Wait TCP 5432 on host (published port)
-      ansible.builtin.wait_for:
-        host: 127.0.0.1
-        port: 5432
+    - name: Wait until Odoo HTTP is reachable
+      wait_for:
+        host: "{{ odoo_host | default('odoo') }}"
+        port: "{{ odoo_port | default(8069) }}"
+        connect_timeout: 2
         delay: 1
         timeout: 900
-      delegate_to: localhost
-      run_once: true
-
-    - name: Confirm Postgres answers (pg_isready in container)
-      ansible.builtin.shell: docker exec db pg_isready -h 127.0.0.1 -p 5432 -U postgres
-      register: pgready
-      changed_when: false
-      retries: 60
-      delay: 5
-      until: pgready.rc == 0
-      delegate_to: localhost
-      run_once: true
-
-    # --- odoo_init: attendre la fin OK ---
-    - name: Wait for odoo_init to exit with code 0
-      ansible.builtin.shell: |
-        docker inspect -f '{{"{{.State.Status}} {{.State.ExitCode}}"}}' odoo_init 2>/dev/null || echo "missing"
-      register: oi
-      changed_when: false
-      retries: 300
-      delay: 2
-      until: oi.stdout is search('exited 0')
-      failed_when: oi.stdout is search('^exited ') and (oi.stdout is not search('exited 0'))
-      delegate_to: localhost
-      run_once: true
-
-    # --- Récupérer l'IP d'Odoo (pour parler directement depuis le container instance) ---
-    - name: Get Odoo IP (on molnet)
-      ansible.builtin.shell: >
-        docker inspect -f '{{ "{% raw %}{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}{% endraw %}" }}' odoo
-      register: odoo_ip_out
-      changed_when: false
-      delegate_to: localhost
-      run_once: true
-
-    - name: Set facts for Odoo host
-      ansible.builtin.set_fact:
-        odoo_host_ip: "{{ (odoo_ip_out.stdout | trim) | default('odoo') }}"
-        cacheable: false
-
-    - name: Wait HTTP 8069 up (Odoo)
-      ansible.builtin.wait_for:
-        host: "{{ odoo_host_ip if odoo_host_ip|length > 0 else 'odoo' }}"
-        port: 8069
-        delay: 1
-        timeout: 900
-      delegate_to: localhost
-      run_once: true
 
   roles:
-  - role: diranetafen.odoo_module
-    vars:
-      odoo_host: "odoo"          # ← nom DNS du conteneur dans le même network
-      odoo_port: 8069
-      odoo_database_name: testdb
-      odoo_admin_login: admin
-      odoo_admin_password: admin
-# =======
-#     - role: diranetafen.odoo_module
-#       vars:
-#         odoo_host: "{{ odoo_host_ip | default('odoo') }}"
-#         odoo_url: "http://{{ odoo_host_ip | default('odoo') }}"
-#         odoo_admin_login: admin
-#         odoo_admin_password: admin
-#         odoo_database_name: testdb
-#         odoo_port: 8069
-# >>>>>>> a4e4a54f7fe7869697fb59bc31abec7b0eed0d55
+    - role: diranetafen.odoo_module
+      vars:
+        odoo_host: "odoo"
+        odoo_port: 8069
+        odoo_database_name: testdb
+        odoo_admin_login: admin
+        odoo_admin_password: admin

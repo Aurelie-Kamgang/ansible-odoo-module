@@ -9,6 +9,7 @@ driver:
   name: docker
 
 platforms:
+  # ---------- Postgres (Debian, healthcheck, port publié) ----------
   - name: db
     image: postgres:15
     pre_build_image: true
@@ -16,16 +17,19 @@ platforms:
       POSTGRES_USER: odoo
       POSTGRES_PASSWORD: odoo
       POSTGRES_DB: testdb
-      LANG: C.UTF-8
-      LC_ALL: C.UTF-8
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
-    command: ["postgres", "-c", "listen_addresses=*"]
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     published_ports:
       - "5432:5432"
     networks:
       - name: molnet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d testdb -h 127.0.0.1 -p 5432"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 10s
 
-  # ---- One-shot: attend santé Postgres puis initialise la DB Odoo ----
+  # ---------- Init Odoo (one-shot) ----------
   - name: odoo_init
     image: odoo:16
     pre_build_image: true
@@ -33,27 +37,20 @@ platforms:
       DB_HOST: db
       DB_USER: odoo
       DB_PASSWORD: odoo
-    entrypoint: ["/bin/sh", "-lc"]
+    entrypoint: ["/bin/bash", "-lc"]
     command: |
-      python3 - <<'PY'
-      import socket, time, sys
-      # attendre Postgres sur 'db:5432'
-      for _ in range(180):
-          try:
-              s = socket.create_connection(('db', 5432), 2)
-              s.close()
-              break
-          except Exception:
-              time.sleep(2)
-      else:
-          sys.exit('db not ready')
-      PY
-      # initialiser la base
-      odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo --without-demo=all -i base --stop-after-init
+      # attendre que Postgres soit healthy
+      for i in $(seq 1 180); do
+        pg_isready -h db -p 5432 -U odoo -d testdb >/dev/null 2>&1 && break
+        sleep 2
+      done
+      # initialiser la base avec le module 'base'
+      odoo -d testdb --db_host=db --db_user=odoo --db_password=odoo \
+           --without-demo=all -i base --stop-after-init
     networks:
       - name: molnet
 
-  # ---- Service Odoo (ENTRYPOINT par défaut) ----
+  # ---------- Service Odoo (attend PG puis lance le serveur) ----------
   - name: odoo
     image: odoo:16
     pre_build_image: true
@@ -61,19 +58,25 @@ platforms:
       DB_HOST: db
       DB_USER: odoo
       DB_PASSWORD: odoo
-    command: >
-      --database testdb
-      --db_host db --db_user odoo --db_password odoo
-      --without-demo=all
-      --http-interface 0.0.0.0 --http-port 8069
+    entrypoint: ["/bin/bash", "-lc"]
+    command: |
+      # attendre que Postgres réponde (au cas où)
+      for i in $(seq 1 180); do
+        pg_isready -h db -p 5432 -U odoo -d testdb >/dev/null 2>&1 && break
+        sleep 2
+      done
+      exec odoo --database testdb \
+        --db_host db --db_user odoo --db_password odoo \
+        --without-demo=all \
+        --http-interface 0.0.0.0 --http-port 8069
     published_ports:
       - "8069:8069"
     networks:
       - name: molnet
 
-  # ---- Hôte Ansible ----
+  # ---------- Hôte Ansible ----------
   - name: instance
-    image: ${MOLECULE_IMAGE:-geerlingguy/docker-ubuntu2204-ansible}
+    image: $${MOLECULE_IMAGE:-geerlingguy/docker-ubuntu2204-ansible}  # <-- $$
     command: /sbin/init
     privileged: true
     cgroupns_mode: host
