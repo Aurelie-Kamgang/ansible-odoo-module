@@ -52,6 +52,50 @@
       delegate_to: localhost
       changed_when: false
 
+    - name: Wait until odoo_init finished successfully (or exited)
+      command: docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' odoo_init
+      delegate_to: localhost
+      register: odoo_init_state
+      retries: 180
+      delay: 2
+      until: >
+        (odoo_init_state.stdout is search('exited 0')) or
+        (odoo_init_state.stdout is search('exited 137')) or
+        (odoo_init_state.stdout is search('running'))
+      changed_when: false
+
+    # Vérifie le port publié côté runner (tu l'as déjà, on garde)
+    # - name: Wait until Odoo answers on 8069
+    #   wait_for:
+    #     host: 127.0.0.1
+    #     port: 8069
+    #     timeout: 900
+    #     state: started
+    #   delegate_to: localhost
+    #   changed_when: false
+
+    # Vérifie aussi la connectivité depuis le conteneur 'instance' vers 'odoo'
+    - name: Wait until Odoo answers on 8069 from instance
+      wait_for:
+        host: odoo
+        port: 8069
+        timeout: 900
+        state: started
+      changed_when: false
+
+    # (optionnel mais robuste) attendre l’endpoint HTTP d’ODoo
+    - name: Wait Odoo HTTP /web/webclient/version_info returns 200
+      uri:
+        url: http://odoo:8069/web/webclient/version_info
+        method: GET
+        status_code: 200
+      register: odoo_http
+      retries: 90
+      delay: 5
+      until: odoo_http.status == 200
+      changed_when: false
+
+
   roles:
     - role: diranetafen.odoo_module
       vars:
