@@ -3,17 +3,24 @@
   hosts: instance
   gather_facts: true
 
+  pre_tasks:
+    - name: Ensure 'pi' user exists
+      become: true
+      ansible.builtin/user:
+        name: pi
+        state: present
+
   tasks:
     - name: Ensure Python 3 is present (bootstrap)
       become: true
       raw: |
         test -e /usr/bin/python3 || (apt-get update -y && apt-get install -y python3)
 
-    - name: Ensure 'pi' user exists (only on instance)
-      become: true
-      user:
-        name: pi
-        state: present
+    # - name: Ensure 'pi' user exists (only on instance)
+    #   become: true
+    #   user:
+    #     name: pi
+    #     state: present
 
     - name: Show container status
       command: docker ps -a
