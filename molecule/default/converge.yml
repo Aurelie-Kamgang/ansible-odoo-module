@@ -1,6 +1,6 @@
 ---
 - name: Converge
-  hosts: instance
+  hosts: all
   gather_facts: false
   become: false
 
@@ -35,52 +35,56 @@
     - name: Gather facts (after python available)
       ansible.builtin.setup:
 
-    # --- Debug rapide DNS/IP ---
     - name: Check name resolution for db and odoo
-      ansible.builtin.command: getent hosts {{ item }}
-      register: getent_out
+      ansible.builtin.shell: getent hosts {{ item }}
+      register: dns_out
       changed_when: false
-      failed_when: getent_out.rc != 0
       loop: [ "db", "odoo" ]
-   # --- Vérifier santé du conteneur Postgres côté hôte Molecule ---
-    - name: Check DB container is healthy (docker inspect)
-      ansible.builtin.shell: >
-        docker inspect -f "{% raw %}{{.State.Health.Status}}{% endraw %}" db
-      register: db_health
+
+    # --- NE PAS utiliser .State.Health : certains drivers ne l'exposent pas ---
+    - name: Ensure DB container is running
+      ansible.builtin.shell: docker inspect -f '{{ "{{.State.Status}}" }}' db
+      register: db_state
       changed_when: false
-      retries: 90            # ~7.5 min max
+      retries: 60
       delay: 5
-      until: db_health.stdout.strip() == "healthy"
+      until: db_state.stdout.strip() == "running"
       delegate_to: localhost
 
-    - name: Get DB container IP (docker inspect)
-      ansible.builtin.shell: >
-        docker inspect -f "{% raw %}{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}{% endraw %}" db
-      register: db_ip_cmd
+    # --- Attendre PostgreSQL réellement prêt (dans le conteneur) ---
+    - name: Wait until Postgres answers pg_isready
+      ansible.builtin.shell: docker exec db pg_isready -U odoo -d testdb
+      register: pgready
       changed_when: false
+      retries: 90      # ~7,5 min
+      delay: 5
+      until: pgready.rc == 0
       delegate_to: localhost
 
-    - name: Get Odoo container IP (docker inspect)
-      ansible.builtin.shell: >
-        docker inspect -f "{% raw %}{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}{% endraw %}" odoo
-      register: odoo_ip_cmd
+    # --- L'init Odoo doit s'être terminée avec succès (exit 0) ---
+    - name: Wait for odoo_init to finish successfully
+      ansible.builtin.shell: docker inspect -f '{{ "{{.State.Status}} {{.State.ExitCode}}" }}' odoo_init
+      register: odoo_init_state
       changed_when: false
+      retries: 60
+      delay: 5
+      until: "'exited 0' in odoo_init_state.stdout"
+      delegate_to: localhost
+
+    # --- Récupérer les IPs réelles de db et odoo ---
+    - name: Get container IPs (db, odoo)
+      ansible.builtin.shell: docker inspect -f '{{ "{% raw %}{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}{% endraw %}" }}' {{ item }}
+      register: ip_out
+      changed_when: false
+      loop: [ "db", "odoo" ]
       delegate_to: localhost
 
     - name: Set facts with real container IPs
       ansible.builtin.set_fact:
-        db_host: "{{ db_ip_cmd.stdout | trim | default('db') }}"
-        odoo_host: "{{ odoo_ip_cmd.stdout | trim | default('odoo') }}"
+        db_host: "{{ (ip_out.results | selectattr('item','equalto','db')   | first).stdout | trim | default('db') }}"
+        odoo_host: "{{ (ip_out.results | selectattr('item','equalto','odoo') | first).stdout | trim | default('odoo') }}"
 
-    # --- Attendre Postgres sur IP réelle ---
-    - name: Wait for Postgres 5432 (by IP)
-      ansible.builtin.wait_for:
-        host: "{{ db_host }}"
-        port: 5432
-        delay: 5
-        timeout: 420
-
-    # --- Attendre Odoo HTTP ---
+    # --- Attendre Odoo HTTP par IP ---
     - name: Wait TCP 8069 (by IP)
       ansible.builtin.wait_for:
         host: "{{ odoo_host }}"
@@ -97,7 +101,17 @@
       retries: 30
       delay: 5
       until: odoo_http.status == 200
-  tasks:
-    - name: Include role under test (repo courant)
-      ansible.builtin.include_role:
-        name: "{{ lookup('env','MOLECULE_PROJECT_DIRECTORY') | basename }}"
+
+  roles:
+    - role: diranetafen.odoo_module
+      vars:
+        odoo_host: "{{ odoo_host }}"
+        odoo_url: "http://{{ odoo_host }}:8069"
+        odoo_port: 8069
+        odoo_admin_login: "admin"
+        odoo_admin_password: "admin"
+        odoo_database_name: "testdb"
+        modules_to_install: []     # reste vide pour un test rapide
+        modules_to_upgrade: []
+        modules_to_uninstall: []
+        odoo_timeout: 240          # évite le warning sur le nom 'timeout'
